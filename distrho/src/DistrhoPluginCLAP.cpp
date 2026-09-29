@@ -1675,8 +1675,10 @@ public:
                 // restore read character
                 buffer[read] = orig;
 
-                // if buffer offset points to null, we found the end of a string, lets check
-                if (buffer[i] == '\0')
+                // if buffer offset points to null, we found the end of a string, lets check.
+                // a string that runs to the end of the chunk continues in the next one,
+                // and buffer[read] holds a byte left over from an earlier read
+                if (i < read && buffer[i] == '\0')
                 {
                     // special keys
                     if (key == "__dpf_state_begin__")
