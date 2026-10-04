@@ -703,15 +703,14 @@ public:
 
     double _getNormalizedParameterValue(const uint32_t index, const double plain)
     {
-        const ParameterRanges& ranges(fPlugin.getParameterRanges(index));
-        return ranges.getFixedAndNormalizedValue(plain);
+        return fPlugin.getParameterNormalizedValue(index, plain);
     }
 
     void _setNormalizedPluginParameterValue(const uint32_t index, const double normalized)
     {
         const ParameterRanges& ranges(fPlugin.getParameterRanges(index));
         const uint32_t hints = fPlugin.getParameterHints(index);
-        float value = ranges.getUnnormalizedValue(normalized);
+        float value = fPlugin.getParameterUnnormalizedValue(index, normalized);
 
         // convert as needed as check for changes
         if (hints & kParameterIsBoolean)
@@ -736,7 +735,7 @@ public:
         else
         {
             // deal with low resolution of some hosts, which convert double to float internally and lose precision
-            if (std::abs(ranges.getNormalizedValue(static_cast<double>(fCachedParameterValues[kVst3InternalParameterBaseCount + index])) - normalized) < 0.0000001)
+            if (std::abs(fPlugin.getParameterNormalizedValue(index, fCachedParameterValues[kVst3InternalParameterBaseCount + index]) - normalized) < 0.0000001)
                 return;
         }
 
@@ -1779,7 +1778,7 @@ public:
 
         info->flags = flags;
         info->step_count = step_count;
-        info->default_normalised_value = ranges.getNormalizedValue(ranges.def);
+        info->default_normalised_value = fPlugin.getParameterNormalizedValue(index, ranges.def);
         // int32_t unit_id;
         strncpy_utf16(info->title,       fPlugin.getParameterName(index), 128);
         strncpy_utf16(info->short_title, fPlugin.getParameterShortName(index), 128);
@@ -1830,7 +1829,7 @@ public:
         const ParameterEnumerationValues& enumValues(fPlugin.getParameterEnumValues(index));
         const ParameterRanges& ranges(fPlugin.getParameterRanges(index));
         const uint32_t hints = fPlugin.getParameterHints(index);
-        float value = ranges.getUnnormalizedValue(normalized);
+        float value = fPlugin.getParameterUnnormalizedValue(index, normalized);
 
         if (hints & kParameterIsBoolean)
         {
@@ -1904,13 +1903,12 @@ public:
         DISTRHO_SAFE_ASSERT_UINT_RETURN(index < fParameterCount, index, V3_INVALID_ARG);
 
         const ParameterEnumerationValues& enumValues(fPlugin.getParameterEnumValues(index));
-        const ParameterRanges& ranges(fPlugin.getParameterRanges(index));
 
         for (uint32_t i=0; i < enumValues.count; ++i)
         {
             if (strcmp_utf16(input, enumValues.values[i].label))
             {
-                *output = ranges.getNormalizedValue(enumValues.values[i].value);
+                *output = fPlugin.getParameterNormalizedValue(index, enumValues.values[i].value);
                 return V3_OK;
             }
         }
@@ -1923,7 +1921,7 @@ public:
         else
             value = std::atof(input8);
 
-        *output = ranges.getNormalizedValue(value);
+        *output = fPlugin.getParameterNormalizedValue(index, value);
         return V3_OK;
     }
 
@@ -1961,7 +1959,7 @@ public:
 
         const ParameterRanges& ranges(fPlugin.getParameterRanges(index));
         const uint32_t hints = fPlugin.getParameterHints(index);
-        float value = ranges.getUnnormalizedValue(normalized);
+        float value = fPlugin.getParameterUnnormalizedValue(index, normalized);
 
         if (hints & kParameterIsBoolean)
         {

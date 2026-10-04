@@ -920,7 +920,7 @@ public:
                         clapEvent.header.size = sizeof(clap_event_param_value_t);
                         clapEvent.header.type = CLAP_EVENT_PARAM_VALUE;
                         clapEvent.param_id = event.index;
-                        clapEvent.value = event.value;
+                        clapEvent.value = getClapParameterValue(event.index, event.value);
                         fPlugin.setParameterValue(event.index, event.value);
                         break;
                     default:
@@ -1251,16 +1251,33 @@ public:
 
         info->id = paramId;
         info->cookie = nullptr;
-        info->min_value = ranges.min;
-        info->max_value = ranges.max;
-        info->default_value = ranges.def;
+        info->min_value = getClapParameterValue(paramId, ranges.min);
+        info->max_value = getClapParameterValue(paramId, ranges.max);
+        info->default_value = getClapParameterValue(paramId, ranges.def);
         return true;
     }
 
     bool getParameterValue(const clap_id paramId, double* const value) const
     {
-        *value = fPlugin.getParameterValue(paramId);
+        *value = getClapParameterValue(paramId, fPlugin.getParameterValue(paramId));
         return true;
+    }
+
+    // CLAP has no flag for a logarithmic parameter, and a host moves a parameter's controls in
+    // equal steps of the value it is given. So the host gets a logarithmic parameter's position
+    // along its scale, from 0.0 to 1.0, and every other parameter's plain value.
+    double getClapParameterValue(const clap_id paramId, const double plain) const
+    {
+        if (fPlugin.getParameterHints(paramId) & kParameterIsLogarithmic)
+            return fPlugin.getParameterNormalizedValue(paramId, plain);
+        return plain;
+    }
+
+    double getPlainParameterValue(const clap_id paramId, const double clapValue) const
+    {
+        if (fPlugin.getParameterHints(paramId) & kParameterIsLogarithmic)
+            return fPlugin.getParameterUnnormalizedValue(paramId, clapValue);
+        return clapValue;
     }
 
     bool getParameterStringForValue(const clap_id paramId, double value, char* const display, const uint32_t size) const
@@ -1268,6 +1285,8 @@ public:
         const ParameterEnumerationValues& enumValues(fPlugin.getParameterEnumValues(paramId));
         const ParameterRanges& ranges(fPlugin.getParameterRanges(paramId));
         const uint32_t hints = fPlugin.getParameterHints(paramId);
+
+        value = getPlainParameterValue(paramId, value);
 
         if (hints & kParameterIsBoolean)
         {
@@ -1316,7 +1335,7 @@ public:
         if (fPlugin.isParameterInteger(paramId))
             *value = std::atoi(display);
         else
-            *value = std::atof(display);
+            *value = getClapParameterValue(paramId, std::atof(display));
 
         return true;
     }
@@ -1367,7 +1386,7 @@ public:
                     fCachedParameters.changed[i] = true;
 
                     clapEvent.param_id = i;
-                    clapEvent.value = value;
+                    clapEvent.value = getClapParameterValue(i, value);
                     out->try_push(out, &clapEvent.header);
                 }
             }
@@ -1413,9 +1432,10 @@ public:
 
     void setParameterValueFromEvent(const clap_event_param_value_t* const event)
     {
-        fCachedParameters.values[event->param_id] = event->value;
+        const float value = getPlainParameterValue(event->param_id, event->value);
+        fCachedParameters.values[event->param_id] = value;
         fCachedParameters.changed[event->param_id] = true;
-        fPlugin.setParameterValue(event->param_id, event->value);
+        fPlugin.setParameterValue(event->param_id, value);
     }
 
     // ----------------------------------------------------------------------------------------------------------------

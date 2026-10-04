@@ -738,6 +738,40 @@ public:
         return false;
     }
 
+    // CLAP and VST3 have no way to tell a host that a parameter is logarithmic, so their wrappers
+    // give the host the parameter's position along its scale, from 0.0 to 1.0, and these convert it.
+    double getParameterNormalizedValue(const uint32_t index, const double value) const noexcept
+    {
+        const ParameterRanges& ranges(getParameterRanges(index));
+
+        if ((getParameterHints(index) & kParameterIsLogarithmic) == 0x0)
+            return ranges.getFixedAndNormalizedValue(value);
+
+        DISTRHO_SAFE_ASSERT_RETURN(ranges.min > 0.0f, 0.0);
+
+        if (value <= ranges.min)
+            return 0.0;
+        if (value >= ranges.max)
+            return 1.0;
+        return std::log(value / ranges.min) / std::log(static_cast<double>(ranges.max) / ranges.min);
+    }
+
+    double getParameterUnnormalizedValue(const uint32_t index, const double normalized) const noexcept
+    {
+        const ParameterRanges& ranges(getParameterRanges(index));
+
+        if ((getParameterHints(index) & kParameterIsLogarithmic) == 0x0)
+            return ranges.getUnnormalizedValue(normalized);
+
+        DISTRHO_SAFE_ASSERT_RETURN(ranges.min > 0.0f, ranges.min);
+
+        if (normalized <= 0.0)
+            return ranges.min;
+        if (normalized >= 1.0)
+            return ranges.max;
+        return ranges.min * std::pow(static_cast<double>(ranges.max) / ranges.min, normalized);
+    }
+
     const String& getParameterName(const uint32_t index) const noexcept
     {
         DISTRHO_SAFE_ASSERT_UINT2_RETURN(fData != nullptr && index < fData->parameterCount,
