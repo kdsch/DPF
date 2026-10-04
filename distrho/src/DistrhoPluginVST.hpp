@@ -189,16 +189,18 @@ void snprintf_utf16_t(int16_t* const dst, const T value, const char* const forma
     std::free(tmpbuf);
 }
 
+// A value shown to a person gets six significant digits without trailing zeros, so that
+// 16000 reads as 16000 rather than 16000.000000 and 0.16 keeps its digits.
 static inline
 void snprintf_f32_utf16(int16_t* const dst, const float value, const size_t size)
 {
-    return snprintf_utf16_t<float>(dst, value, "%f", size);
+    return snprintf_utf16_t<float>(dst, value, "%g", size);
 }
 
 static inline
 void snprintf_f32_utf16(int16_t* const dst, const double value, const size_t size)
 {
-    return snprintf_utf16_t<double>(dst, value, "%f", size);
+    return snprintf_utf16_t<double>(dst, value, "%g", size);
 }
 
 static inline
