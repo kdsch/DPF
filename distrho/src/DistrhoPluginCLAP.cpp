@@ -1310,6 +1310,12 @@ public:
         const String& unit = fPlugin.getParameterUnit(paramId);
         const char spacer = unit.isNotEmpty() ? ' ' : '\0';
 
+        if (fPlugin.isParameterShownWithSIPrefix(paramId))
+        {
+            snprintf_si(display, value, unit.buffer(), size);
+            return true;
+        }
+
         if (hints & kParameterIsInteger)
             std::snprintf(display, size - 1, "%d%c%s", static_cast<int>(value), spacer, unit.buffer());
         else
@@ -1335,6 +1341,8 @@ public:
 
         if (fPlugin.isParameterInteger(paramId))
             *value = std::atoi(display);
+        else if (fPlugin.isParameterShownWithSIPrefix(paramId))
+            *value = getClapParameterValue(paramId, strtod_si(display, fPlugin.getParameterUnit(paramId)));
         else
             *value = getClapParameterValue(paramId, std::atof(display));
 

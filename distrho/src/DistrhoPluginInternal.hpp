@@ -23,6 +23,7 @@
 # include "DistrhoPluginVST.hpp"
 #endif
 
+#include <algorithm>
 #include <set>
 
 #ifdef DPF_RUNTIME_TESTING
@@ -128,6 +129,87 @@ static inline
 void snprintf_f32(char* const dst, const double value, const size_t size)
 {
     return snprintf_t<double>(dst, value, "%f", size);
+}
+
+// A logarithmic parameter with a unit spans decades, so no one number of decimal places suits its
+// range. The CLAP and VST3 wrappers show its value to three significant figures with an SI prefix on
+// its unit, as in 160 mHz, 50.0 Hz and 16.0 kHz, and read the same prefixes back.
+struct SIPrefix {
+    double scale;
+    const char* symbol;
+};
+
+static constexpr const SIPrefix kSIPrefixes[] = {
+    { 1e6, "M" }, { 1e3, "k" }, { 1.0, "" }, { 1e-3, "m" }, { 1e-6, "\xc2\xb5" }
+};
+
+static constexpr const size_t kSIPrefixCount = sizeof(kSIPrefixes) / sizeof(kSIPrefixes[0]);
+
+static inline
+void snprintf_si(char* const dst, double value, const char* const unit, const size_t size)
+{
+    DISTRHO_SAFE_ASSERT_RETURN(size > 0,);
+
+    if (! (value > 0.0))
+    {
+        std::snprintf(dst, size-1, "%g %s", value, unit);
+        dst[size-1] = '\0';
+        return;
+    }
+
+    size_t prefix = 0;
+    while (prefix + 1 < kSIPrefixCount && value < kSIPrefixes[prefix].scale)
+        ++prefix;
+
+    value /= kSIPrefixes[prefix].scale;
+    int decimals = value < 10.0 ? 2 : value < 100.0 ? 1 : 0;
+
+    // Rounding can carry into a new digit, as 9.996 does to 10.00, which leaves one decimal place
+    // too many. A carry to 1000 moves up a prefix.
+    const double scale = std::pow(10.0, decimals);
+    if (std::pow(10.0, 3 - decimals) <= std::round(value * scale) / scale)
+    {
+        --decimals;
+
+        if (decimals < 0 && prefix > 0)
+        {
+            --prefix;
+            value /= 1000.0;
+            decimals = 2;
+        }
+
+        decimals = std::max(decimals, 0);
+    }
+
+    std::snprintf(dst, size-1, "%.*f %s%s", decimals, value, kSIPrefixes[prefix].symbol, unit);
+    dst[size-1] = '\0';
+}
+
+// strtod_si reads a number written as snprintf_si writes it, with or without the space, the prefix
+// and the unit. It also takes "u" for micro, which is easier to type than the micro sign.
+static inline
+double strtod_si(const char* const text, const char* const unit)
+{
+    char* end;
+    const double value = std::strtod(text, &end);
+
+    while (*end == ' ')
+        ++end;
+
+    const size_t unitLength = std::strlen(unit);
+
+    for (size_t i = 0; i < kSIPrefixCount; ++i)
+    {
+        const size_t length = std::strlen(kSIPrefixes[i].symbol);
+        if (length != 0 && std::strncmp(end, kSIPrefixes[i].symbol, length) == 0
+            && std::strncmp(end + length, unit, unitLength) == 0)
+            return value * kSIPrefixes[i].scale;
+    }
+
+    if (end[0] == 'u' && std::strncmp(end + 1, unit, unitLength) == 0)
+        return value * 1e-6;
+
+    return value;
 }
 
 static inline
@@ -736,6 +818,11 @@ public:
             return true;
 
         return false;
+    }
+
+    bool isParameterShownWithSIPrefix(const uint32_t index) const noexcept
+    {
+        return (getParameterHints(index) & kParameterIsLogarithmic) != 0x0 && getParameterUnit(index).isNotEmpty();
     }
 
     // CLAP and VST3 have no way to tell a host that a parameter is logarithmic, so their wrappers

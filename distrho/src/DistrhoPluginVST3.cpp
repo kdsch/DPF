@@ -1782,7 +1782,8 @@ public:
         // int32_t unit_id;
         strncpy_utf16(info->title,       fPlugin.getParameterName(index), 128);
         strncpy_utf16(info->short_title, fPlugin.getParameterShortName(index), 128);
-        strncpy_utf16(info->units,       fPlugin.getParameterUnit(index), 128);
+        // A value shown with an SI prefix carries its own unit, so the host has none to append.
+        strncpy_utf16(info->units, fPlugin.isParameterShownWithSIPrefix(index) ? "" : fPlugin.getParameterUnit(index).buffer(), 128);
         return V3_OK;
     }
 
@@ -1850,10 +1851,20 @@ public:
             }
         }
 
-        if (hints & kParameterIsInteger)
+        if (fPlugin.isParameterShownWithSIPrefix(index))
+        {
+            char text[128];
+            snprintf_si(text, value, fPlugin.getParameterUnit(index), sizeof(text));
+            strncpy_utf16(output, text, 128);
+        }
+        else if (hints & kParameterIsInteger)
+        {
             snprintf_i32_utf16(output, value, 128);
+        }
         else
+        {
             snprintf_f32_utf16(output, value, 128);
+        }
 
         return V3_OK;
     }
@@ -1918,6 +1929,8 @@ public:
         float value;
         if (fPlugin.getParameterHints(index) & kParameterIsInteger)
             value = std::atoi(input8);
+        else if (fPlugin.isParameterShownWithSIPrefix(index))
+            value = strtod_si(input8, fPlugin.getParameterUnit(index));
         else
             value = std::atof(input8);
 
