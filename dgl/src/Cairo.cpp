@@ -29,6 +29,10 @@
 #include "WidgetPrivateData.hpp"
 #include "WindowPrivateData.hpp"
 
+#ifdef CAIRO_HAS_SVG_SURFACE
+# include <cairo-svg.h>
+#endif
+
 // templated classes
 #include "ImageBaseWidgets.cpp"
 
@@ -823,9 +827,42 @@ void TopLevelWidget::PrivateData::display()
 
 // -----------------------------------------------------------------------
 
-void Window::PrivateData::renderToPicture(const char*, const GraphicsContext&, uint, uint)
+// The window's widgets draw a second time, into an SVG surface in place of the window's own, so that the
+// picture holds their paths and text as vectors rather than the pixels the window shows.
+void Window::PrivateData::renderToPicture(const char* const filename,
+                                          const GraphicsContext& context,
+                                          const uint width,
+                                          const uint height)
 {
+   #ifdef CAIRO_HAS_SVG_SURFACE
+    cairo_surface_t* const surface = cairo_svg_surface_create(filename, width, height);
+    cairo_svg_surface_set_document_unit(surface, CAIRO_SVG_UNIT_PX);
+    cairo_t* const picture = cairo_create(surface);
+
+    CairoGraphicsContext& cairoContext = const_cast<CairoGraphicsContext&>(static_cast<const CairoGraphicsContext&>(context));
+    cairo_t* const windowHandle = cairoContext.handle;
+    cairoContext.handle = picture;
+
+    for (std::list<TopLevelWidget*>::iterator it = topLevelWidgets.begin(); it != topLevelWidgets.end(); ++it)
+    {
+        TopLevelWidget* const widget(*it);
+
+        if (widget->isVisible())
+            widget->pData->display();
+    }
+
+    cairoContext.handle = windowHandle;
+
+    const cairo_status_t status = cairo_status(picture);
+    cairo_destroy(picture);
+    cairo_surface_finish(surface);
+    if (status != CAIRO_STATUS_SUCCESS)
+        d_stderr2("DGL: cannot render to picture %s: %s", filename, cairo_status_to_string(status));
+    cairo_surface_destroy(surface);
+   #else
     notImplemented("Window::PrivateData::renderToPicture");
+    (void)filename; (void)context; (void)width; (void)height;
+   #endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------

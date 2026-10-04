@@ -455,7 +455,7 @@ public:
    /**
       Render this window's content into a picture file, specified by @a filename.
       Window must be visible and on screen.
-      Written picture format is PPM.
+      Written picture format is PPM, except under Cairo, which writes SVG.
     */
     void renderToPicture(const char* filename);
 

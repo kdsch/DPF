@@ -185,7 +185,7 @@ struct Window::PrivateData : IdleCallback {
     bool createWebView(const char* url, const DGL_NAMESPACE::WebViewOptions& options);
    #endif
 
-    static void renderToPicture(const char* filename, const GraphicsContext& context, uint width, uint height);
+    void renderToPicture(const char* filename, const GraphicsContext& context, uint width, uint height);
 
     // modal handling
     void startModal();
