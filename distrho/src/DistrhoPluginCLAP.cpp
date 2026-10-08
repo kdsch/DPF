@@ -1319,8 +1319,7 @@ public:
         if (hints & kParameterIsInteger)
             std::snprintf(display, size - 1, "%d%c%s", static_cast<int>(value), spacer, unit.buffer());
         else
-            // Six significant digits without trailing zeros, as snprintf_f32_utf16 shows VST3's.
-            std::snprintf(display, size - 1, "%g%c%s", value, spacer, unit.buffer());
+            snprintf_decimals(display, value, fPlugin.getParameterDecimals(paramId), unit.buffer(), size);
 
         display[size - 1] = '\0';
         return true;

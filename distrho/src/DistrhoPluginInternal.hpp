@@ -185,6 +185,22 @@ void snprintf_si(char* const dst, double value, const char* const unit, const si
     dst[size-1] = '\0';
 }
 
+// snprintf_decimals writes value to the given number of decimal places, followed by unit if it has
+// one. A value that rounds to zero is written without a minus sign.
+static inline
+void snprintf_decimals(char* const dst, double value, const int decimals, const char* const unit, const size_t size)
+{
+    DISTRHO_SAFE_ASSERT_RETURN(size > 0,);
+
+    const double scale = std::pow(10.0, decimals);
+    value = std::round(value * scale) / scale;
+    if (value == 0.0)
+        value = 0.0;
+
+    std::snprintf(dst, size-1, "%.*f%s%s", decimals, value, unit[0] != '\0' ? " " : "", unit);
+    dst[size-1] = '\0';
+}
+
 // strtod_si reads a number written as snprintf_si writes it, with or without the space, the prefix
 // and the unit. It also takes "u" for micro, which is easier to type than the micro sign.
 static inline
@@ -818,6 +834,12 @@ public:
             return true;
 
         return false;
+    }
+
+    int getParameterDecimals(const uint32_t index) const noexcept
+    {
+        const ParameterRanges& ranges(getParameterRanges(index));
+        return d_decimalsForRange(ranges.min, ranges.max);
     }
 
     bool isParameterShownWithSIPrefix(const uint32_t index) const noexcept

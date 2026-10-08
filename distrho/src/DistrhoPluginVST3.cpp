@@ -1863,7 +1863,10 @@ public:
         }
         else
         {
-            snprintf_f32_utf16(output, value, 128);
+            // VST3 hosts append the parameter's units themselves.
+            char text[128];
+            snprintf_decimals(text, value, fPlugin.getParameterDecimals(index), "", sizeof(text));
+            strncpy_utf16(output, text, 128);
         }
 
         return V3_OK;

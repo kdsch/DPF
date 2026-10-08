@@ -434,6 +434,18 @@ uint32_t d_nextPowerOf2(uint32_t size) noexcept
 }
 
 /**
+   Get how many decimal places to show a value with, for a parameter that spans min to max, so that
+   a step in the last place is a small fraction of the range: none for a span of 100 or more, one
+   for a span of 10 or more, and two otherwise.
+ */
+static inline
+int d_decimalsForRange(const double min, const double max) noexcept
+{
+    const double span = d_abs(max - min);
+    return span >= 100.0 ? 0 : span >= 10.0 ? 1 : 2;
+}
+
+/**
    Round a floating point number to an integer.
    Fast operation for values known to be 0 or positive.
  */
