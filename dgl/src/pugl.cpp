@@ -48,9 +48,6 @@
 # import <Cocoa/Cocoa.h>
 # include <dlfcn.h>
 # include <mach/mach_time.h>
-# ifdef DGL_CAIRO
-#  include <cairo-quartz.h>
-# endif
 # ifdef DGL_VULKAN
 #  import <QuartzCore/CAMetalLayer.h>
 #  include <vulkan/vulkan_macos.h>
@@ -166,7 +163,7 @@ START_NAMESPACE_DGL
 # import "pugl-upstream/src/mac.m"
 # import "pugl-upstream/src/mac_stub.m"
 # ifdef DGL_CAIRO
-#  import "pugl-upstream/src/mac_cairo.m"
+#  import "pugl-extra/mac_cairo.m"
 # endif
 # ifdef DGL_OPENGL
 #  import "pugl-upstream/src/mac_gl.m"
