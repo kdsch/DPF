@@ -1893,7 +1893,9 @@ public:
            #if DISTRHO_PLUGIN_NUM_INPUTS + DISTRHO_PLUGIN_NUM_OUTPUTS != 0
             for (uint16_t i = 0; i < ioData->mNumberBuffers; ++i)
             {
-                if (ioData->mBuffers[i].mDataByteSize != sizeof(float) * inFramesToProcess)
+                // A buffer without data asks us to provide it, so its size means nothing.
+                if (ioData->mBuffers[i].mData != nullptr &&
+                    ioData->mBuffers[i].mDataByteSize != sizeof(float) * inFramesToProcess)
                 {
                     setLastRenderError(kAudio_ParamError);
                     return kAudio_ParamError;
@@ -1901,6 +1903,14 @@ public:
             }
            #endif
         }
+
+       #if DISTRHO_PLUGIN_NUM_INPUTS + DISTRHO_PLUGIN_NUM_OUTPUTS != 0
+        for (uint16_t i = 0; i < ioData->mNumberBuffers; ++i)
+        {
+            if (ioData->mBuffers[i].mData == nullptr)
+                ioData->mBuffers[i].mDataByteSize = sizeof(float) * inFramesToProcess;
+        }
+       #endif
 
       #if DISTRHO_PLUGIN_NUM_INPUTS != 0
        #ifdef DISTRHO_PLUGIN_EXTRA_IO
@@ -1959,6 +1969,12 @@ public:
             bool adjustDataByteSize, usingHostBuffer = true;
             UInt32 prevDataByteSize;
 
+            // The callback may point the list at the host's buffers, which
+            // the list must not keep, because it frees what it points at.
+            void* ownData[fAudioBufferList->mNumberBuffers];
+            for (uint16_t i = 0; i < fAudioBufferList->mNumberBuffers; ++i)
+                ownData[i] = fAudioBufferList->mBuffers[i].mData;
+
             for (uint16_t i = 0; i < ioData->mNumberBuffers; ++i)
             {
                 if (ioData->mBuffers[i].mData == nullptr)
@@ -1995,6 +2011,9 @@ public:
 
             if (err != noErr)
             {
+                for (uint16_t i = 0; i < fAudioBufferList->mNumberBuffers; ++i)
+                    fAudioBufferList->mBuffers[i].mData = ownData[i];
+
                 if (adjustDataByteSize)
                 {
                     for (uint16_t i = 0; i < ioData->mNumberBuffers; ++i)
@@ -2020,6 +2039,9 @@ public:
             {
                 for (uint16_t i = 0; i < numInputs; ++i)
                     inputs[i] = static_cast<const float*>(fAudioBufferList->mBuffers[i].mData);
+
+                for (uint16_t i = 0; i < fAudioBufferList->mNumberBuffers; ++i)
+                    fAudioBufferList->mBuffers[i].mData = ownData[i];
 
                #if DISTRHO_PLUGIN_NUM_OUTPUTS != 0
                 for (uint16_t i = 0; i < numOutputs; ++i)
