@@ -222,6 +222,7 @@ public:
          #endif
           fHost(host),
           fHostGui(hostGui),
+          fHostParams(static_cast<const clap_host_params_t*>(host->get_extension(host, CLAP_EXT_PARAMS))),
          #if DPF_CLAP_USING_HOST_TIMER
           fTimerId(0),
           fHostTimer(hostTimer),
@@ -549,6 +550,7 @@ private:
    #endif
     const clap_host_t* const fHost;
     const clap_host_gui_t* const fHostGui;
+    const clap_host_params_t* const fHostParams;
    #if DPF_CLAP_USING_HOST_TIMER
     clap_id fTimerId;
     const clap_host_timer_support_t* const fHostTimer;
@@ -632,6 +634,18 @@ private:
     }
 
     // ----------------------------------------------------------------------------------------------------------------
+    // sendEventToHost queues an event for the plugin to pass to the host, and asks the host to
+    // take it. A host that has stopped calling process, such as while the plugin is bypassed,
+    // then calls params.flush instead, so the event still arrives.
+    void sendEventToHost(const ClapEventQueue::Event& ev) const
+    {
+        fEventQueue.addEventFromUI(ev);
+
+        if (fHostParams != nullptr)
+            fHostParams->request_flush(fHost);
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
     // DPF callbacks
 
     void editParameter(const uint32_t rindex, const bool started) const
@@ -640,7 +654,7 @@ private:
             started ? ClapEventQueue::kEventGestureBegin : ClapEventQueue::kEventGestureEnd,
             rindex, 0.f
         };
-        fEventQueue.addEventFromUI(ev);
+        sendEventToHost(ev);
     }
 
     static void editParameterCallback(void* const ptr, const uint32_t rindex, const bool started)
@@ -654,7 +668,7 @@ private:
             ClapEventQueue::kEventParamSet,
             rindex, value
         };
-        fEventQueue.addEventFromUI(ev);
+        sendEventToHost(ev);
     }
 
     static void setParameterCallback(void* const ptr, const uint32_t rindex, const float value)
@@ -889,50 +903,7 @@ public:
 
        #if DISTRHO_PLUGIN_HAS_UI
         if (const clap_output_events_t* const outputEvents = process->out_events)
-        {
-            const RecursiveMutexTryLocker crmtl(fEventQueue.lock);
-
-            if (crmtl.wasLocked())
-            {
-                // reuse the same struct for gesture and parameters, they are compatible up to where it matters
-                clap_event_param_value_t clapEvent = {
-                    { 0, 0, 0, 0, CLAP_EVENT_IS_LIVE },
-                    0, nullptr, 0, 0, 0, 0, 0.0
-                };
-
-                for (uint32_t i=0; i<fEventQueue.used; ++i)
-                {
-                    const Event& event(fEventQueue.events[i]);
-
-                    switch (event.type)
-                    {
-                    case kEventGestureBegin:
-                        clapEvent.header.size = sizeof(clap_event_param_gesture_t);
-                        clapEvent.header.type = CLAP_EVENT_PARAM_GESTURE_BEGIN;
-                        clapEvent.param_id = event.index;
-                        break;
-                    case kEventGestureEnd:
-                        clapEvent.header.size = sizeof(clap_event_param_gesture_t);
-                        clapEvent.header.type = CLAP_EVENT_PARAM_GESTURE_END;
-                        clapEvent.param_id = event.index;
-                        break;
-                    case kEventParamSet:
-                        clapEvent.header.size = sizeof(clap_event_param_value_t);
-                        clapEvent.header.type = CLAP_EVENT_PARAM_VALUE;
-                        clapEvent.param_id = event.index;
-                        clapEvent.value = getClapParameterValue(event.index, event.value);
-                        fPlugin.setParameterValue(event.index, event.value);
-                        break;
-                    default:
-                        continue;
-                    }
-
-                    outputEvents->try_push(outputEvents, &clapEvent.header);
-                }
-
-                fEventQueue.used = 0;
-            }
-        }
+            sendEventsFromUI(outputEvents);
        #endif
 
        #if DISTRHO_PLUGIN_WANT_TIMEPOS
@@ -1347,6 +1318,69 @@ public:
 
         return true;
     }
+
+    // flushParametersForHost serves the host's params.flush call. A host may call it instead of
+    // process while the plugin is bypassed or inactive, so the UI's changes must leave by this
+    // route too, or the host never sees them.
+    void flushParametersForHost(const clap_input_events_t* const in, const clap_output_events_t* const out)
+    {
+       #if DISTRHO_PLUGIN_HAS_UI
+        if (out != nullptr)
+            sendEventsFromUI(out);
+       #endif
+
+        flushParameters(in, out, 0);
+    }
+
+   #if DISTRHO_PLUGIN_HAS_UI
+    // sendEventsFromUI passes the parameter changes and gestures the UI has queued to the host
+    // and applies the changes to the plugin. It leaves the queue alone if the UI holds its lock.
+    void sendEventsFromUI(const clap_output_events_t* const outputEvents)
+    {
+        const RecursiveMutexTryLocker crmtl(fEventQueue.lock);
+
+        if (! crmtl.wasLocked())
+            return;
+
+        // reuse the same struct for gesture and parameters, they are compatible up to where it matters
+        clap_event_param_value_t clapEvent = {
+            { 0, 0, 0, 0, CLAP_EVENT_IS_LIVE },
+            0, nullptr, 0, 0, 0, 0, 0.0
+        };
+
+        for (uint32_t i=0; i<fEventQueue.used; ++i)
+        {
+            const Event& event(fEventQueue.events[i]);
+
+            switch (event.type)
+            {
+            case kEventGestureBegin:
+                clapEvent.header.size = sizeof(clap_event_param_gesture_t);
+                clapEvent.header.type = CLAP_EVENT_PARAM_GESTURE_BEGIN;
+                clapEvent.param_id = event.index;
+                break;
+            case kEventGestureEnd:
+                clapEvent.header.size = sizeof(clap_event_param_gesture_t);
+                clapEvent.header.type = CLAP_EVENT_PARAM_GESTURE_END;
+                clapEvent.param_id = event.index;
+                break;
+            case kEventParamSet:
+                clapEvent.header.size = sizeof(clap_event_param_value_t);
+                clapEvent.header.type = CLAP_EVENT_PARAM_VALUE;
+                clapEvent.param_id = event.index;
+                clapEvent.value = getClapParameterValue(event.index, event.value);
+                fPlugin.setParameterValue(event.index, event.value);
+                break;
+            default:
+                continue;
+            }
+
+            outputEvents->try_push(outputEvents, &clapEvent.header);
+        }
+
+        fEventQueue.used = 0;
+    }
+   #endif
 
     void flushParameters(const clap_input_events_t* const in,
                          const clap_output_events_t* const out,
@@ -2550,7 +2584,7 @@ static bool CLAP_ABI clap_plugin_params_text_to_value(const clap_plugin_t* plugi
 static void CLAP_ABI clap_plugin_params_flush(const clap_plugin_t* plugin, const clap_input_events_t* in, const clap_output_events_t* out)
 {
     PluginCLAP* const instance = static_cast<PluginCLAP*>(plugin->plugin_data);
-    return instance->flushParameters(in, out, 0);
+    return instance->flushParametersForHost(in, out);
 }
 
 static const clap_plugin_params_t clap_plugin_params = {
