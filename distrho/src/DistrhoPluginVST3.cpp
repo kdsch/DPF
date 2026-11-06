@@ -1593,18 +1593,26 @@ public:
                 }
                #endif
 
-                if (v3_cpp_obj(queue)->get_point_count(queue) <= 0)
-                    continue;
+                // if there are any parameter changes at frame 0, handle the last of them here.
+                // a host may queue several points at frame 0, as Ableton Live does when the UI
+                // sends several values within one block, and the last one is the current value.
+                bool changedAtStart = false;
+                double startNormalized = 0.0;
 
-                // if there are any parameter changes at frame 0, handle them here
-                if (v3_cpp_obj(queue)->get_point(queue, 0, &offset, &normalized) != V3_OK)
-                    break;
+                for (int32_t j = 0, pcount = v3_cpp_obj(queue)->get_point_count(queue); j < pcount; ++j)
+                {
+                    if (v3_cpp_obj(queue)->get_point(queue, j, &offset, &normalized) != V3_OK || offset != 0)
+                        break;
 
-                if (offset != 0)
+                    changedAtStart = true;
+                    startNormalized = normalized;
+                }
+
+                if (! changedAtStart)
                     continue;
 
                 const uint32_t index = rindex - kVst3InternalParameterCount;
-                _setNormalizedPluginParameterValue(index, normalized);
+                _setNormalizedPluginParameterValue(index, startNormalized);
             }
         }
 
