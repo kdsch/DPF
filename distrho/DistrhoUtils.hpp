@@ -91,7 +91,8 @@ int64_t d_cconst(const uint8_t a, const uint8_t b, const uint8_t c, const uint8_
 CPP_INLINE_CONSTEXPR
 uint32_t d_cconst(const char str[4])
 {
-    return (str[0] << 24) | (str[1] << 16) | (str[2] << 8) | str[3];
+    return (uint32_t(uint8_t(str[0])) << 24) | (uint32_t(uint8_t(str[1])) << 16)
+         | (uint32_t(uint8_t(str[2])) << 8) | uint32_t(uint8_t(str[3]));
 }
 
 /**
@@ -100,7 +101,7 @@ uint32_t d_cconst(const char str[4])
 CPP_INLINE_CONSTEXPR
 uint32_t d_version(const uint8_t major, const uint8_t minor, const uint8_t micro) noexcept
 {
-    return uint32_t(major << 16) | uint32_t(minor << 8) | (micro << 0);
+    return uint32_t(major << 16) | uint32_t(minor << 8) | uint32_t(micro);
 }
 
 /**
