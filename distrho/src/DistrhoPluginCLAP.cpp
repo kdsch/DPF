@@ -770,6 +770,9 @@ public:
           fHost(host),
           fOutputEvents(nullptr),
           fResetParameterIndex(UINT32_MAX),
+         #if DISTRHO_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST
+          fParameterValueChangeRequested(nullptr),
+         #endif
          #if DISTRHO_PLUGIN_NUM_INPUTS+DISTRHO_PLUGIN_NUM_OUTPUTS != 0
           fUsingCV(false),
          #endif
@@ -785,6 +788,11 @@ public:
         if (const uint32_t paramCount = fPlugin.getParameterCount())
         {
             fCachedParameters.setup(paramCount);
+
+           #if DISTRHO_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST
+            fParameterValueChangeRequested = new bool[paramCount];
+            std::memset(fParameterValueChangeRequested, 0, sizeof(bool) * paramCount);
+           #endif
 
             for (uint32_t i=0; i<paramCount; ++i)
             {
@@ -835,6 +843,10 @@ public:
 
     ~PluginCLAP() override
     {
+       #if DISTRHO_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST
+        delete[] fParameterValueChangeRequested;
+       #endif
+
        #if DISTRHO_PLUGIN_HAS_UI && DISTRHO_PLUGIN_WANT_STATE
         if (fNeededUiSends != nullptr)
         {
@@ -1423,14 +1435,28 @@ public:
 
                     if (d_isEqual(fCachedParameters.values[i], value))
                         continue;
-
-                    fCachedParameters.values[i] = value;
-                    fCachedParameters.changed[i] = true;
-
-                    clapEvent.param_id = i;
-                    clapEvent.value = getClapParameterValue(i, value);
-                    out->try_push(out, &clapEvent.header);
                 }
+               #if DISTRHO_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST
+                else if (fParameterValueChangeRequested[i])
+                {
+                    // As in the VST3 wrapper, the value the plugin passed with its request is ignored, and the
+                    // host learns the value the plugin holds now. The change is the plugin's, not the user's,
+                    // so no gesture surrounds it.
+                    fParameterValueChangeRequested[i] = false;
+                    value = fPlugin.getParameterValue(i);
+                }
+               #endif
+                else
+                {
+                    continue;
+                }
+
+                fCachedParameters.values[i] = value;
+                fCachedParameters.changed[i] = true;
+
+                clapEvent.param_id = i;
+                clapEvent.value = getClapParameterValue(i, value);
+                out->try_push(out, &clapEvent.header);
             }
         }
 
@@ -1964,6 +1990,11 @@ private:
     const clap_output_events_t* fOutputEvents;
 
     uint32_t fResetParameterIndex;
+   #if DISTRHO_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST
+    // fParameterValueChangeRequested marks each parameter whose value the plugin changed during run,
+    // which flushParameters reports to the host when the block ends.
+    bool* fParameterValueChangeRequested;
+   #endif
    #if DISTRHO_PLUGIN_NUM_INPUTS != 0
     const float* fAudioInputs[DISTRHO_PLUGIN_NUM_INPUTS];
    #endif
@@ -2207,8 +2238,11 @@ private:
    #endif
 
    #if DISTRHO_PLUGIN_WANT_PARAMETER_VALUE_CHANGE_REQUEST
-    bool requestParameterValueChange(uint32_t, float)
+    bool requestParameterValueChange(const uint32_t index, float)
     {
+        DISTRHO_SAFE_ASSERT_UINT2_RETURN(index < fCachedParameters.numParams, index, fCachedParameters.numParams, false);
+
+        fParameterValueChangeRequested[index] = true;
         return true;
     }
 
