@@ -17,14 +17,15 @@
 #include "DistrhoPluginInternal.hpp"
 #include "../DistrhoPluginUtils.hpp"
 
-#ifndef DISTRHO_PLUGIN_BRAND_ID
-# error DISTRHO_PLUGIN_BRAND_ID undefined!
+// Only an AU bundle's Info.plist names the brand and unique IDs. DistrhoPluginAU.cpp refuses to build without them,
+// so the export tool requires them only when it writes that Info.plist, and a VST3 or CLAP bundle can do without.
+#if defined(DISTRHO_PLUGIN_BRAND_ID) && defined(DISTRHO_PLUGIN_UNIQUE_ID)
+# define DISTRHO_PLUGIN_EXPORT_HAS_AU_IDS 1
+#else
+# define DISTRHO_PLUGIN_EXPORT_HAS_AU_IDS 0
 #endif
 
-#ifndef DISTRHO_PLUGIN_UNIQUE_ID
-# error DISTRHO_PLUGIN_UNIQUE_ID undefined!
-#endif
-
+#include <cstring>
 #include <fstream>
 #include <iostream>
 
@@ -32,6 +33,7 @@ USE_NAMESPACE_DISTRHO
 
 // --------------------------------------------------------------------------------------------------------------------
 
+#if DISTRHO_PLUGIN_EXPORT_HAS_AU_IDS
 void generate_au_plist(const PluginExporter& plugin,
                        const char* const basename,
                        const char* const license)
@@ -106,9 +108,64 @@ void generate_au_plist(const PluginExporter& plugin,
     outputFile.close();
     std::cout << " done!" << std::endl;
 }
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 
+// generate_bundle_plist writes the Info.plist of a macOS VST2, VST3, or CLAP bundle. It gives the bundle the
+// plugin's CLAP ID as its identifier, as generate_au_plist does for the AU bundle, so that every bundle of a
+// plugin names its vendor. A plugin without a CLAP ID keeps the identifier of utils/plugin.bundle's template.
+void generate_bundle_plist(const PluginExporter& plugin, const char* const basename)
+{
+    std::cout << "Writing Info.plist..."; std::cout.flush();
+    std::fstream outputFile("Info.plist", std::ios::out);
+
+    const uint32_t version = plugin.getVersion();
+
+    const uint32_t majorVersion = (version & 0xFF0000) >> 16;
+    const uint32_t minorVersion = (version & 0x00FF00) >> 8;
+    const uint32_t microVersion = (version & 0x0000FF) >> 0;
+
+    outputFile << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    outputFile << "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n";
+    outputFile << "<plist version=\"1.0\">\n";
+    outputFile << "  <dict>\n";
+    outputFile << "    <key>CFBundleDevelopmentRegion</key>\n";
+    outputFile << "    <string>English</string>\n";
+    outputFile << "    <key>CFBundleExecutable</key>\n";
+    outputFile << "    <string>" << basename << "</string>\n";
+    outputFile << "    <key>CFBundleIconFile</key>\n";
+    outputFile << "    <string></string>\n";
+    outputFile << "    <key>CFBundleIdentifier</key>\n";
+#ifdef DISTRHO_PLUGIN_CLAP_ID
+    outputFile << "    <string>" DISTRHO_PLUGIN_CLAP_ID "</string>\n";
+#else
+    outputFile << "    <string>studio.kx.distrho." << basename << "</string>\n";
+#endif
+    outputFile << "    <key>CFBundleInfoDictionaryVersion</key>\n";
+    outputFile << "    <string>6.0</string>\n";
+    outputFile << "    <key>CFBundlePackageType</key>\n";
+    outputFile << "    <string>BNDL</string>\n";
+    outputFile << "    <key>CFBundleSignature</key>\n";
+    outputFile << "    <string>????</string>\n";
+    outputFile << "    <key>CFBundleShortVersionString</key>\n";
+    outputFile << "    <string>" << majorVersion << "." << minorVersion << "." << microVersion << "</string>\n";
+    outputFile << "    <key>CFBundleVersion</key>\n";
+    outputFile << "    <string>" << majorVersion << "." << minorVersion << "." << microVersion << "</string>\n";
+    outputFile << "    <key>CSResourcesFileMapped</key>\n";
+    outputFile << "    <true/>\n";
+    outputFile << "  </dict>\n";
+    outputFile << "</plist>\n";
+
+    outputFile.close();
+    std::cout << " done!" << std::endl;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+// The export tool runs in the Contents directory of a macOS bundle, with the plugin's binary name as its first
+// argument. With "bundle" as its second argument, it writes the Info.plist of a VST2, VST3, or CLAP bundle;
+// otherwise it writes the Info.plist of an AU bundle.
 int main(int argc, char* argv[])
 {
     if (argc <= 1)
@@ -122,6 +179,12 @@ int main(int argc, char* argv[])
     d_nextBufferSize = 0;
     d_nextSampleRate = 0.0;
     d_nextPluginIsDummy = false;
+
+    if (argc > 2 && std::strcmp(argv[2], "bundle") == 0)
+    {
+        generate_bundle_plist(plugin, argv[1]);
+        return 0;
+    }
 
     String license(plugin.getLicense());
 
@@ -273,7 +336,12 @@ int main(int argc, char* argv[])
         }
     }
 
+#if DISTRHO_PLUGIN_EXPORT_HAS_AU_IDS
     generate_au_plist(plugin, argv[1], license);
+#else
+    d_stderr("An AU Info.plist needs DISTRHO_PLUGIN_BRAND_ID and DISTRHO_PLUGIN_UNIQUE_ID");
+    return 1;
+#endif
 
     return 0;
 }

@@ -657,9 +657,7 @@ function(dpf__build_vst2 NAME HAS_UI EXTRA_UI_LINK_OPTS)
       LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin/${NAME}.vst/Contents/MacOS/$<0:>"
       OUTPUT_NAME "${NAME}"
       SUFFIX "")
-    set(INFO_PLIST_PROJECT_NAME "${NAME}")
-    configure_file("${DPF_ROOT_DIR}/utils/plugin.bundle/Contents/Info.plist"
-      "${PROJECT_BINARY_DIR}/bin/${NAME}.vst/Contents/Info.plist" @ONLY)
+    dpf__add_bundle_plist("${NAME}" "${NAME}-vst2" "${PROJECT_BINARY_DIR}/bin/${NAME}.vst/Contents" "${HAS_UI}")
     file(COPY "${DPF_ROOT_DIR}/utils/plugin.bundle/Contents/PkgInfo"
       DESTINATION "${PROJECT_BINARY_DIR}/bin/${NAME}.vst/Contents")
   endif()
@@ -751,10 +749,7 @@ function(dpf__build_vst3 NAME HAS_UI EXTRA_UI_LINK_OPTS)
   endif()
 
   if(APPLE)
-    # Uses the same macOS bundle template as VST2
-    set(INFO_PLIST_PROJECT_NAME "${NAME}")
-    configure_file("${DPF_ROOT_DIR}/utils/plugin.bundle/Contents/Info.plist"
-     "${PROJECT_BINARY_DIR}/bin/${NAME}.vst3/Contents/Info.plist" @ONLY)
+    dpf__add_bundle_plist("${NAME}" "${NAME}-vst3" "${PROJECT_BINARY_DIR}/bin/${NAME}.vst3/Contents" "${HAS_UI}")
     file(COPY "${DPF_ROOT_DIR}/utils/plugin.bundle/Contents/PkgInfo"
      DESTINATION "${PROJECT_BINARY_DIR}/bin/${NAME}.vst3/Contents")
   endif()
@@ -786,9 +781,7 @@ function(dpf__build_clap NAME HAS_UI EXTRA_UI_LINK_OPTS)
       LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin/${NAME}.clap/Contents/MacOS/$<0:>"
       OUTPUT_NAME "${NAME}"
       SUFFIX "")
-    set(INFO_PLIST_PROJECT_NAME "${NAME}")
-    configure_file("${DPF_ROOT_DIR}/utils/plugin.bundle/Contents/Info.plist"
-      "${PROJECT_BINARY_DIR}/bin/${NAME}.clap/Contents/Info.plist" @ONLY)
+    dpf__add_bundle_plist("${NAME}" "${NAME}-clap" "${PROJECT_BINARY_DIR}/bin/${NAME}.clap/Contents" "${HAS_UI}")
     file(COPY "${DPF_ROOT_DIR}/utils/plugin.bundle/Contents/PkgInfo"
       DESTINATION "${PROJECT_BINARY_DIR}/bin/${NAME}.clap/Contents")
   endif()
@@ -823,10 +816,7 @@ function(dpf__build_au NAME HAS_UI)
     PREFIX ""
     SUFFIX "")
 
-  dpf__add_executable("${NAME}-export" ${_no_srcs})
-  dpf__add_plugin_main("${NAME}-export" "export")
-  dpf__add_ui_main("${NAME}-export" "export" "${HAS_UI}")
-  target_link_libraries("${NAME}-export" PRIVATE "${NAME}-dsp" "${NAME}-ui")
+  dpf__add_export_tool("${NAME}" "${HAS_UI}")
 
   separate_arguments(CMAKE_CROSSCOMPILING_EMULATOR)
 
@@ -838,6 +828,41 @@ function(dpf__build_au NAME HAS_UI)
 
   file(COPY "${DPF_ROOT_DIR}/utils/plugin.bundle/Contents/PkgInfo"
     DESTINATION "${PROJECT_BINARY_DIR}/bin/${NAME}.component/Contents")
+endfunction()
+
+# dpf__add_export_tool
+# ------------------------------------------------------------------------------
+#
+# Add the target `${NAME}-export`, a program that writes the Info.plist of a
+# macOS bundle from the plugin's own description, unless an earlier format
+# has added it.
+#
+function(dpf__add_export_tool NAME HAS_UI)
+  if(TARGET "${NAME}-export")
+    return()
+  endif()
+  dpf__create_dummy_source_list(_no_srcs)
+  dpf__add_executable("${NAME}-export" ${_no_srcs})
+  dpf__add_plugin_main("${NAME}-export" "export")
+  dpf__add_ui_main("${NAME}-export" "export" "${HAS_UI}")
+  target_link_libraries("${NAME}-export" PRIVATE "${NAME}-dsp" "${NAME}-ui")
+endfunction()
+
+# dpf__add_bundle_plist
+# ------------------------------------------------------------------------------
+#
+# Have the export tool write the Info.plist of the VST2, VST3, or CLAP bundle
+# whose Contents directory is CONTENTS after TARGET builds. The tool takes the
+# bundle's identifier from DISTRHO_PLUGIN_CLAP_ID, as it does for the AU
+# bundle, which a template configured here could not see.
+#
+function(dpf__add_bundle_plist NAME TARGET CONTENTS HAS_UI)
+  dpf__add_export_tool("${NAME}" "${HAS_UI}")
+  separate_arguments(CMAKE_CROSSCOMPILING_EMULATOR)
+  add_custom_command(TARGET "${TARGET}" POST_BUILD
+    COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} "$<TARGET_FILE:${NAME}-export>" "${NAME}" bundle
+    WORKING_DIRECTORY "${CONTENTS}")
+  add_dependencies("${TARGET}" "${NAME}-export")
 endfunction()
 
 # dpf__build_static
