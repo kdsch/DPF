@@ -107,6 +107,19 @@ public:
         if (widget != nullptr)
             *widget = (LV2UI_Widget)fUI.getNativeWindowHandle();
 
+       #ifdef DISTRHO_OS_MAC
+        // REAPER on macOS sizes an embedded LV2 UI only from ui:resize, and
+        // otherwise opens it at 320 by 295 points. It reads the size in
+        // points, as CLAP's getSize gives it.
+        if (const LV2UI_Resize* const resize = getLv2Feature<LV2UI_Resize>(features, LV2_UI__resize))
+        {
+            const double scaleFactor = fUI.getScaleFactor();
+            resize->ui_resize(resize->handle,
+                              static_cast<int>(fUI.getWidth() / scaleFactor),
+                              static_cast<int>(fUI.getHeight() / scaleFactor));
+        }
+       #endif
+
        #if DISTRHO_PLUGIN_WANT_STATE
         // tell the DSP we're ready to receive msgs
         setState("__dpf_ui_data__", "");
